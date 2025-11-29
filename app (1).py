@@ -49,25 +49,37 @@ def preprocess_image(img):
 # --------------------------------------------------
 # Grad-CAM
 # --------------------------------------------------
-def generate_gradcam(model, img_array, last_conv_layer_name="conv5_block3_out"):
+def generate_gradcam(model, img_array):
+    last_conv_layer_name = get_last_conv_layer(model)
+    last_conv_layer = model.get_layer(last_conv_layer_name)
+
     grad_model = tf.keras.models.Model(
-        [model.inputs], 
-        [model.get_layer(last_conv_layer_name).output, model.output]
+        [model.inputs],
+        [last_conv_layer.output, model.output]
     )
 
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img_array)
-        pred_index = tf.argmax(predictions[0])
-        loss = predictions[:, pred_index]
+        top_class = tf.argmax(predictions[0])
+        loss = predictions[:, top_class]
 
     grads = tape.gradient(loss, conv_outputs)
+
+    # Mean intensity of gradients
     weights = tf.reduce_mean(grads, axis=(0, 1, 2))
-    cam = tf.reduce_sum(tf.multiply(weights, conv_outputs), axis=-1).numpy()[0]
 
-    cam = cv2.resize(cam, (224, 224))
+    cam = np.zeros(conv_outputs.shape[1:3], dtype=np.float32)
+
+    for i, w in enumerate(weights):
+        cam += w * conv_outputs[0, :, :, i]
+
     cam = np.maximum(cam, 0)
-    heatmap = cam / cam.max()
+    cam = cam / (cam.max() + 1e-8)
 
+    heatmap = cv2.resize(cam, (224, 224))
+    heatmap = np.uint8(255 * heatmap)
+
+    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
     return heatmap
 
 # --------------------------------------------------
