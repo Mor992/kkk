@@ -7,3 +7,4 @@ seaborn
 scikit-learn
 Pillow
 opencv-python-headless
+gdown
